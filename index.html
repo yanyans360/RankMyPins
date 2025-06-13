@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <title>Pinterest Board Sorter</title>
+  <title>Pinterest Board Sorter (Auto-Fetch)</title>
   <style>
     body {
       font-family: Arial, sans-serif;
@@ -10,139 +10,147 @@
       margin: 2rem auto;
       padding: 0 1rem;
     }
-    h1 {
-      text-align: center;
-    }
-    textarea {
-      width: 100%;
-      height: 100px;
-      font-family: monospace;
-      margin-bottom: 0.5rem;
-    }
-    button {
-      display: block;
-      margin: 0 auto 1rem;
-      padding: 0.5rem 1rem;
+    input, button {
       font-size: 1rem;
+      padding: 0.5rem;
+      margin: 0.25rem 0;
+      width: 100%;
+      box-sizing: border-box;
     }
-    #status {
-      text-align: center;
-      margin-bottom: 1rem;
-      font-weight: bold;
-    }
+    #status { text-align: center; font-weight: bold; margin: 1rem 0; }
     #comparison {
       display: flex;
       justify-content: space-around;
       align-items: center;
       margin-bottom: 2rem;
     }
-    #comparison img {
-      max-width: 45%;
+    #comparison .pin {
+      width: 45%;
       cursor: pointer;
       border: 3px solid transparent;
       transition: border-color 0.2s;
     }
-    #comparison img:hover {
-      border-color: #007bff;
-    }
-    #sortedList {
-      text-align: center;
-    }
-    #sortedList img {
-      max-width: 100px;
-      margin: 0.25rem;
-      vertical-align: middle;
-    }
+    #comparison .pin:hover { border-color: #BD081C; }
+    #sortedList { text-align: center; }
+    #sortedList .embed { display: block; margin: .5rem auto; }
   </style>
 </head>
 <body>
+
   <h1>Pinterest Board Sorter</h1>
-  <p>Paste your pins’ image URLs here as a JSON array, e.g.:<br>
-  <code>["https://i.pinimg.com/1.jpg","https://i.pinimg.com/2.jpg",…]</code></p>
-  <textarea id="pinsInput">["https://i.pinimg.com/1.jpg","https://i.pinimg.com/2.jpg","https://i.pinimg.com/3.jpg"]</textarea>
-  <button id="startSortBtn">Start Sorting</button>
+
+  <p>Enter your public Pinterest <strong>board URL</strong> below:</p>
+  <input id="boardUrl" type="text"
+         placeholder="https://www.pinterest.com/USERNAME/BOARDNAME" />
+
+  <button id="loadBoard">Load & Sort Board</button>
+
   <div id="status"></div>
   <div id="comparison"></div>
   <div id="sortedList"></div>
 
+  <!-- Pinterest SDK for embed rendering -->
+  <script async defer src="//assets.pinterest.com/js/pinit.js"></script>
   <script>
-    // Entry point
-    document.getElementById('startSortBtn').addEventListener('click', () => {
-      let pins;
-      try {
-        pins = JSON.parse(document.getElementById('pinsInput').value);
-        if (!Array.isArray(pins)) throw 'Not an array';
-      } catch (e) {
-        alert('Invalid JSON: ' + e);
-        return;
-      }
-      startInteractiveSort(pins);
-    });
+  const statusEl      = document.getElementById('status');
+  const compEl        = document.getElementById('comparison');
+  const sortedEl      = document.getElementById('sortedList');
+  const loadBtn       = document.getElementById('loadBoard');
+  const boardUrlInput = document.getElementById('boardUrl');
 
-    async function startInteractiveSort(pins) {
-      document.getElementById('status').textContent = 'Sorting…';
-      document.getElementById('sortedList').innerHTML = '';
+  loadBtn.addEventListener('click', async () => {
+    const boardUrl = boardUrlInput.value.trim();
+    if (!boardUrl.match(/^https:\/\/www\.pinterest\.com\/[^/]+\/[^/]+$/)) {
+      alert('Please enter a valid public board URL like https://www.pinterest.com/USERNAME/BOARDNAME');
+      return;
+    }
+    statusEl.textContent = 'Fetching pins…';
+    try {
+      const pins = await fetchPinsFromRSS(boardUrl);
+      if (!pins.length) throw 'No pins found';
+      statusEl.textContent = `Found ${pins.length} pins – starting sort…`;
       const sorted = await mergeSort(pins);
-      document.getElementById('status').textContent = 'Sorting complete!';
+      statusEl.textContent = 'Done! Here’s your ranked board:';
       showFinalList(sorted);
+    } catch (e) {
+      statusEl.textContent = 'Error: ' + e;
     }
+  });
 
-    // Recursive MergeSort, but comparisons use the user’s clicks
-    async function mergeSort(arr) {
-      if (arr.length <= 1) return arr;
-      const mid = Math.floor(arr.length / 2);
-      const left = await mergeSort(arr.slice(0, mid));
-      const right = await mergeSort(arr.slice(mid));
-      return await merge(left, right);
-    }
+  // 1) Fetch the board’s RSS feed (via AllOrigins) and extract each <link>
+  async function fetchPinsFromRSS(boardUrl) {
+    const rssUrl = boardUrl.replace(/\/$/, '') + '.rss';
+    const proxy  = 'https://api.allorigins.win/raw?url=';
+    const resp   = await fetch(proxy + encodeURIComponent(rssUrl));
+    if (!resp.ok) throw `Feed fetch failed (${resp.status})`;
+    const xmlText = await resp.text();
+    const xml     = new DOMParser().parseFromString(xmlText, 'application/xml');
+    const links   = Array.from(xml.querySelectorAll('item > link'))
+                          .map(n => n.textContent.trim());
+    return links;
+  }
 
-    // Show two pins side-by-side, return whichever URL the user clicks
-    function getUserChoice(leftUrl, rightUrl) {
-      return new Promise(resolve => {
-        const cmp = document.getElementById('comparison');
-        cmp.innerHTML = '';
+  // 2) Standard async MergeSort, but user-driven comparisons
+  async function mergeSort(arr) {
+    if (arr.length <= 1) return arr;
+    const mid   = Math.floor(arr.length / 2);
+    const left  = await mergeSort(arr.slice(0, mid));
+    const right = await mergeSort(arr.slice(mid));
+    return await merge(left, right);
+  }
 
-        const leftImg = document.createElement('img');
-        leftImg.src = leftUrl;
-        leftImg.alt = 'Left pin';
-        leftImg.addEventListener('click', () => resolve(leftUrl));
-
-        const rightImg = document.createElement('img');
-        rightImg.src = rightUrl;
-        rightImg.alt = 'Right pin';
-        rightImg.addEventListener('click', () => resolve(rightUrl));
-
-        cmp.appendChild(leftImg);
-        cmp.appendChild(rightImg);
+  // 3) At each step, show two embed codes and await your click
+  function getUserChoice(l, r) {
+    return new Promise(resolve => {
+      compEl.innerHTML = '';
+      [l, r].forEach(url => {
+        const wrapper = document.createElement('div');
+        wrapper.className = 'pin';
+        wrapper.innerHTML = `
+          <a data-pin-do="embedPin" href="${url}"></a>
+        `;
+        wrapper.addEventListener('click', () => resolve(url));
+        compEl.appendChild(wrapper);
       });
-    }
+      // reparse embeds
+      if (window.parsePins) parsePins();
+    });
+  }
 
-    // Merge two sorted arrays by repeatedly asking the user to choose
-    async function merge(left, right) {
-      const result = [];
-      while (left.length && right.length) {
-        const pick = await getUserChoice(left[0], right[0]);
-        if (pick === left[0]) {
-          result.push(left.shift());
-        } else {
-          result.push(right.shift());
-        }
-      }
-      // one side is empty: concatenate the rest
-      return result.concat(left).concat(right);
+  async function merge(a, b) {
+    const result = [];
+    while (a.length && b.length) {
+      const pick = await getUserChoice(a[0], b[0]);
+      if (pick === a[0]) result.push(a.shift());
+      else             result.push(b.shift());
     }
+    return result.concat(a).concat(b);
+  }
 
-    // Display the fully-sorted pins
-    function showFinalList(sorted) {
-      const container = document.getElementById('sortedList');
-      container.innerHTML = '<h2>Your Ranked Pins</h2>';
-      sorted.forEach(url => {
-        const img = document.createElement('img');
-        img.src = url;
-        img.alt = 'Pin';
-        container.appendChild(img);
-      });
+  // 4) Render final ranked list with embed codes
+  function showFinalList(arr) {
+    sortedEl.innerHTML = '';
+    arr.forEach(url => {
+      const div = document.createElement('div');
+      div.className = 'embed';
+      div.innerHTML = `<a data-pin-do="embedPin" href="${url}"></a>`;
+      sortedEl.appendChild(div);
+    });
+    if (window.parsePins) parsePins();
+  }
+
+  // Wait for the Pinterest SDK to attach its parse method
+  function parsePins() {
+    if (window.PinUtils && PinUtils.build) {
+      PinUtils.build();       // for old v1 SDK
+      window.PinUtils.parse(); // for newer SDK
     }
+  }
+  // Poll until Pinterest’s script loads
+  (function waitForSDK() {
+    if (window.PinUtils && (PinUtils.build||PinUtils.parse)) return;
+    setTimeout(waitForSDK, 200);
+  })();
   </script>
 </body>
 </html>
