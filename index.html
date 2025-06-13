@@ -60,10 +60,10 @@
 
   loadBtn.addEventListener('click', async () => {
     const boardUrl = boardUrlInput.value.trim();
-    if (!boardUrl.match(/^https:\/\/www\.pinterest\.com\/[^/]+\/[^/]+$/)) {
+    if (!boardUrl.match(/^https?:\/\/(www\.)?pinterest\.com\/[^\/]+\/[^\/]+\/?$/)) {
       alert('Please enter a valid public board URL like https://www.pinterest.com/USERNAME/BOARDNAME');
-      return;
-    }
+    return;
+   }
     statusEl.textContent = 'Fetching pins…';
     try {
       const pins = await fetchPinsFromRSS(boardUrl);
