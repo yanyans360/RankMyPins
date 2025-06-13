@@ -66,7 +66,7 @@
    }
     statusEl.textContent = 'Fetching pins…';
     try {
-      const pins = await fetchPinsFromRSS(boardUrl);
+      const pins = await fetchPinsFromPage(boardUrl);
       if (!pins.length) throw 'No pins found';
       statusEl.textContent = `Found ${pins.length} pins – starting sort…`;
       const sorted = await mergeSort(pins);
@@ -77,17 +77,25 @@
     }
   });
 
-  // 1) Fetch the board’s RSS feed (via AllOrigins) and extract each <link>
-  async function fetchPinsFromRSS(boardUrl) {
-    const rssUrl = boardUrl.replace(/\/$/, '') + '.rss';
-    const proxy  = 'https://api.allorigins.win/raw?url=';
-    const resp   = await fetch(proxy + encodeURIComponent(rssUrl));
-    if (!resp.ok) throw `Feed fetch failed (${resp.status})`;
-    const xmlText = await resp.text();
-    const xml     = new DOMParser().parseFromString(xmlText, 'application/xml');
-    const links   = Array.from(xml.querySelectorAll('item > link'))
-                          .map(n => n.textContent.trim());
-    return links;
+  // 1) Fetch the board page HTML and extract all /pin/ links
+  async function fetchPinsFromPage(boardUrl) {
+    const proxy = 'https://api.allorigins.win/raw?url=';
+    const resp  = await fetch(proxy + encodeURIComponent(boardUrl));
+    if (!resp.ok) throw `Page fetch failed (${resp.status})`;
+    const html   = await resp.text();
+    const doc    = new DOMParser().parseFromString(html, 'text/html');
+    const anchors = Array.from(doc.querySelectorAll('a'));
+    const pinsSet = new Set();
+    anchors.forEach(a => {
+      const href = a.getAttribute('href');
+      if (href && href.match(/^\/pin\/\d+\//)) {
+       const url = new URL(href, 'https://www.pinterest.com').toString();
+      pinsSet.add(url);
+    }
+    });
+    const pins = Array.from(pinsSet);
+   if (!pins.length) throw 'No pins found on the board page';
+  return pins;
   }
 
   // 2) Standard async MergeSort, but user-driven comparisons
@@ -143,7 +151,6 @@
   function parsePins() {
     if (window.PinUtils && PinUtils.build) {
       PinUtils.build();       // for old v1 SDK
-      window.PinUtils.parse(); // for newer SDK
     }
   }
   // Poll until Pinterest’s script loads
