@@ -77,25 +77,24 @@
     }
   });
 
-  // 1) Fetch the board page HTML and extract all /pin/ links
+// 1) Fetch the board page HTML and parse Pinterest’s __PWS_DATA__ JSON for all pins
   async function fetchPinsFromPage(boardUrl) {
     const proxy = 'https://api.allorigins.win/raw?url=';
     const resp  = await fetch(proxy + encodeURIComponent(boardUrl));
     if (!resp.ok) throw `Page fetch failed (${resp.status})`;
     const html   = await resp.text();
     const doc    = new DOMParser().parseFromString(html, 'text/html');
-    const anchors = Array.from(doc.querySelectorAll('a'));
-    const pinsSet = new Set();
-    anchors.forEach(a => {
-      const href = a.getAttribute('href');
-      if (href && href.match(/^\/pin\/\d+\//)) {
-       const url = new URL(href, 'https://www.pinterest.com').toString();
-      pinsSet.add(url);
-    }
-    });
-    const pins = Array.from(pinsSet);
-   if (!pins.length) throw 'No pins found on the board page';
-  return pins;
+    // Pinterest inlines initial data in a <script id="__PWS_DATA__">
+    const script = doc.querySelector('script#\\__PWS_DATA__');
+    if (!script) throw 'No Pinterest data script found';
+    const data = JSON.parse(script.textContent);
+    const resources = data.props?.initialReduxState?.resources || {};
+    // Grab every PinResource entry and build its URL
+    const pins = Object.entries(resources)
+      .filter(([key]) => key.startsWith('PinResource:'))
+      .map(([, pin]) => `https://www.pinterest.com/pin/${pin.id}/`);
+    if (!pins.length) throw 'No pins found in board data';
+    return pins;
   }
 
   // 2) Standard async MergeSort, but user-driven comparisons
