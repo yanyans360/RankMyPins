@@ -77,25 +77,21 @@
     }
   });
 
-// 1) Fetch the board page HTML and parse Pinterest’s __PWS_DATA__ JSON for all pins
+  // 1) Fetch *all* pins via Pinterest’s public pidgets API (no HTML scraping)
   async function fetchPinsFromPage(boardUrl) {
     const proxy = 'https://api.allorigins.win/raw?url=';
-    const resp  = await fetch(proxy + encodeURIComponent(boardUrl));
-    if (!resp.ok) throw `Page fetch failed (${resp.status})`;
-    const html   = await resp.text();
-    const doc    = new DOMParser().parseFromString(html, 'text/html');
-    // Pinterest inlines initial data in a <script id="__PWS_DATA__">
-    const script = doc.querySelector('script#\\__PWS_DATA__');
-    if (!script) throw 'No Pinterest data script found';
-    const data = JSON.parse(script.textContent);
-    const resources = data.props?.initialReduxState?.resources || {};
-    // Grab every PinResource entry and build its URL
-    const pins = Object.entries(resources)
-      .filter(([key]) => key.startsWith('PinResource:'))
-      .map(([, pin]) => `https://www.pinterest.com/pin/${pin.id}/`);
-    if (!pins.length) throw 'No pins found in board data';
-    return pins;
-  }
+    // extract username & board
+    const m = boardUrl.match(/^https?:\/\/(www\.)?pinterest\.com\/([^\/]+)\/([^\/]+)\/?$/);
+    if (!m) throw 'Invalid board URL';
+    const [, , username, board] = m;
+    const apiUrl = `https://api.pinterest.com/v3/pidgets/boards/${username}/${board}/pins/`;
+    const resp = await fetch(proxy + encodeURIComponent(apiUrl));
+    if (!resp.ok) throw `API fetch failed (${resp.status})`;
+    const json = await resp.json();
+    if (!json.data || !json.data.length) throw 'No pins found in API data';
+    // map each pin’s ID to its canonical URL
+    return json.data.map(pin => `https://www.pinterest.com/pin/${pin.id}/`);
+ }
 
   // 2) Standard async MergeSort, but user-driven comparisons
   async function mergeSort(arr) {
