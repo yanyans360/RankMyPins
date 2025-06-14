@@ -125,22 +125,27 @@
           console.error('JSON.parse failed on __PWS_DATA__ blob', err);
           throw 'Data parse error';
         }
-    const resources =
-      data.props &&
-      data.props.initialReduxState &&
-      data.props.initialReduxState.resources;
-    
-    console.log(
-      'Resources count:',
-      resources ? Object.keys(resources).length : 0
-    );
-    if (!resources) throw 'No resources in Pinterest data';
-    const pins = Object.entries(resources)
-      .filter(([key]) => key.startsWith('PinResource:'))
-      .map(([, pin]) => `https://www.pinterest.com/pin/${pin.id}/`);
-    if (!pins.length) throw 'No pins found';
-    return pins;
-  }
+    let pins = [];
+const resources = data?.props?.initialReduxState?.resources;
+
+if (resources && Object.keys(resources).length) {
+  console.log('Resources count:', Object.keys(resources).length);
+  pins = Object.entries(resources)
+    .filter(([key]) => key.startsWith('PinResource:') && resources[key]?.id)
+    .map(([, pin]) => `https://www.pinterest.com/pin/${pin.id}/`);
+}
+
+if (!pins.length) {
+  console.warn('Falling back to regex scrape of HTML');
+  const regex = /\/pin\/(\d+)\/"/g;
+  const ids   = new Set();
+  let m;
+  while ((m = regex.exec(html)) !== null) ids.add(m[1]);
+  pins = [...ids].map(id => `https://www.pinterest.com/pin/${id}/`);
+}
+
+if (!pins.length) throw 'No pins found';
+return pins;
 
     // Fetch the oEmbed HTML for each pin URL
   async function fetchEmbedCodes(urls) {
