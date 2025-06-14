@@ -107,17 +107,24 @@
     if (!resp.ok) throw `Page fetch failed (${resp.status})`;
     const html = await resp.text();
     console.log('Fetched HTML length:', html.length);
-    // extract the JSON blob from the __PWS_DATA__ script tag
-    const match = html.match(/<script id="__PWS_DATA__">window\.__PWS_DATA__ = (\{[\s\S]*?\});<\/script>/);
-    console.log('Regex match result:', match);
-    if (!match) throw 'No Pinterest data found';
+   // extract JSON from the __PWS_DATA__ script tag
         let data;
-    try {
-      data = JSON.parse(match[1]);
-    } catch (err) {
-      console.error('JSON.parse failed on __PWS_DATA__ blob', err);
-      throw 'Data parse error';
-    }
+        const scriptMatch = html.match(/<script id="__PWS_DATA__"[^>]*>([\s\S]*?)<\/script>/);
+        console.log('Regex match result:', scriptMatch);
+        if (!scriptMatch) throw 'No Pinterest data found';
+        
+        let jsonText = scriptMatch[1].trim();
+        // Pinterest sometimes prefixes the blob with “window.__PWS_DATA__ =”
+        if (jsonText.startsWith('window.__PWS_DATA__')) {
+          jsonText = jsonText.replace(/^window\.__PWS_DATA__\s*=\s*/, '').replace(/;$/, '');
+        }
+        
+        try {
+          data = JSON.parse(jsonText);
+        } catch (err) {
+          console.error('JSON.parse failed on __PWS_DATA__ blob', err);
+          throw 'Data parse error';
+        }
     const resources =
       data.props &&
       data.props.initialReduxState &&
