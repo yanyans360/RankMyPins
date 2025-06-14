@@ -66,10 +66,31 @@
    }
     statusEl.textContent = 'Fetching pins…';
     try {
-      const pinUrls = await fetchPinsFromPage(boardUrl);
-      if (!pinUrls.length) throw 'No pins found';
+           console.log('Starting board load for', boardUrl);
+      let pinUrls;
+      try {
+        pinUrls = await fetchPinsFromPage(boardUrl);
+        console.log('pinUrls:', pinUrls);
+      } catch (err) {
+        console.error('Error in fetchPinsFromPage', err);
+        statusEl.textContent = 'Error fetching pin URLs: ' + err;
+        return;
+      }
+      if (!pinUrls.length) {
+        console.warn('No pins returned');
+        statusEl.textContent = 'No pins found on board';
+        return;
+      }
       statusEl.textContent = `Found ${pinUrls.length} pins – fetching embed codes…`;
-      const pins = await fetchEmbedCodes(pinUrls);
+      let pins;
+      try {
+        pins = await fetchEmbedCodes(pinUrls);
+        console.log('Fetched embed codes count:', pins.length);
+      } catch (err) {
+        console.error('Error in fetchEmbedCodes', err);
+        statusEl.textContent = 'Error fetching embeds: ' + err;
+        return;
+      }
       statusEl.textContent = 'Fetched embed codes – starting sort…';
       const sorted = await mergeSort(pins);
       statusEl.textContent = 'Done! Here’s your ranked board:';
@@ -85,11 +106,20 @@
     const resp  = await fetch(proxy + encodeURIComponent(boardUrl));
     if (!resp.ok) throw `Page fetch failed (${resp.status})`;
     const html = await resp.text();
+    console.log('Fetched HTML length:', html.length);
     // extract the JSON blob from the __PWS_DATA__ script tag
     const match = html.match(/<script id="__PWS_DATA__">window\.__PWS_DATA__ = (\{[\s\S]*?\});<\/script>/);
+    console.log('Regex match result:', match);
     if (!match) throw 'No Pinterest data found';
-    const data = JSON.parse(match[1]);
+        let data;
+    try {
+      data = JSON.parse(match[1]);
+    } catch (err) {
+      console.error('JSON.parse failed on __PWS_DATA__ blob', err);
+      throw 'Data parse error';
+    }
     const resources = data.props
+        console.log('Resources count:', resources ? Object.keys(resources).length : 0);
                     && data.props.initialReduxState
                     && data.props.initialReduxState.resources;
     if (!resources) throw 'No resources in Pinterest data';
@@ -105,7 +135,10 @@
     const embedHtmls = await Promise.all(
       urls.map(async url => {
         const oEmbedUrl = `https://api.pinterest.com/v1/oembed/?url=${encodeURIComponent(url)}`;
+        console.log('Fetching embed for URL:', url);
         const resp = await fetch(oEmbedUrl);
+        console.log('Embed fetch status for', url, resp.status);
+        console.error('Embed fetch failed for', url, resp.status);
         if (!resp.ok) throw `Embed fetch failed (${resp.status})`;
         const data = await resp.json();
         return data.html;
