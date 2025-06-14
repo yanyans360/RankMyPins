@@ -66,9 +66,11 @@
    }
     statusEl.textContent = 'Fetching pins…';
     try {
-      const pins = await fetchPinsFromPage(boardUrl);
-      if (!pins.length) throw 'No pins found';
-      statusEl.textContent = `Found ${pins.length} pins – starting sort…`;
+      const pinUrls = await fetchPinsFromPage(boardUrl);
+      if (!pinUrls.length) throw 'No pins found';
+      statusEl.textContent = `Found ${pinUrls.length} pins – fetching embed codes…`;
+      const pins = await fetchEmbedCodes(pinUrls);
+      statusEl.textContent = 'Fetched embed codes – starting sort…';
       const sorted = await mergeSort(pins);
       statusEl.textContent = 'Done! Here’s your ranked board:';
       showFinalList(sorted);
@@ -96,6 +98,20 @@
       .map(([, pin]) => `https://www.pinterest.com/pin/${pin.id}/`);
     if (!pins.length) throw 'No pins found';
     return pins;
+  }
+
+    // Fetch the oEmbed HTML for each pin URL
+  async function fetchEmbedCodes(urls) {
+    const embedHtmls = await Promise.all(
+      urls.map(async url => {
+        const oEmbedUrl = `https://api.pinterest.com/v1/oembed/?url=${encodeURIComponent(url)}`;
+        const resp = await fetch(oEmbedUrl);
+        if (!resp.ok) throw `Embed fetch failed (${resp.status})`;
+        const data = await resp.json();
+        return data.html;
+      })
+    );
+    return embedHtmls;
   }
 
   // 2) Standard async MergeSort, but user-driven comparisons
