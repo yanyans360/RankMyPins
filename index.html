@@ -118,10 +118,15 @@
       console.error('JSON.parse failed on __PWS_DATA__ blob', err);
       throw 'Data parse error';
     }
-    const resources = data.props
-        console.log('Resources count:', resources ? Object.keys(resources).length : 0);
-                    && data.props.initialReduxState
-                    && data.props.initialReduxState.resources;
+    const resources =
+      data.props &&
+      data.props.initialReduxState &&
+      data.props.initialReduxState.resources;
+    
+    console.log(
+      'Resources count:',
+      resources ? Object.keys(resources).length : 0
+    );
     if (!resources) throw 'No resources in Pinterest data';
     const pins = Object.entries(resources)
       .filter(([key]) => key.startsWith('PinResource:'))
